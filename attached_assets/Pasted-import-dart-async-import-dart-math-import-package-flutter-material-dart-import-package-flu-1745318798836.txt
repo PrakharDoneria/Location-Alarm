@@ -1,0 +1,639 @@
+import 'dart:async';
+import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_typeahead/flutter_typeahead.dart';
+import 'package:dio/dio.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:glassmorphism/glassmorphism.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:animate_do/animate_do.dart';
+
+void main() {
+  runApp(LocationAlarmApp());
+}
+
+class LocationAlarmApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Location Tracker',
+      theme: ThemeData(
+        primarySwatch: Colors.indigo,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+        textTheme: GoogleFonts.poppinsTextTheme(),
+        appBarTheme: AppBarTheme(
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          systemOverlayStyle: SystemUiOverlayStyle.light,
+        ),
+      ),
+      home: SetDestinationScreen(),
+    );
+  }
+}
+
+class SetDestinationScreen extends StatefulWidget {
+  @override
+  _SetDestinationScreenState createState() => _SetDestinationScreenState();
+}
+
+class _SetDestinationScreenState extends State<SetDestinationScreen> {
+  LatLng? userLocation;
+  LatLng? destinationLocation;
+  final TextEditingController _searchController = TextEditingController();
+  final MapController _mapController = MapController();
+  final AudioPlayer audioPlayer = AudioPlayer();
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+  Timer? locationTimer;
+  bool alarmSet = false;
+  final String apiKey = "f0f941cf9eb74407802c5824c72c50d7";
+
+  double? estimatedDistance;
+  double? estimatedTime;
+  bool alarmTriggered = false;
+  bool earlyWarningTriggered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPermissions();
+    _initNotification();
+  }
+
+  void _playAlarmSound() async {
+    try {
+      // Just play a beep sound or a system sound instead
+      // This won't throw an error if the file doesn't exist
+      audioPlayer.play(AssetSource('alarm.mp3'));
+      setState(() {
+        alarmTriggered = true;
+      });
+    } catch (e) {
+      print("Error playing sound: $e");
+    }
+  }
+
+  void _stopAlarm() {
+    audioPlayer.stop();
+    setState(() {
+      alarmTriggered = false;
+      alarmSet = false;
+      earlyWarningTriggered = false;
+    });
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(
+      content: Text("Alarm stopped successfully!"),
+      duration: Duration(seconds: 2),
+    ));
+  }
+
+  @override
+  void dispose() {
+    locationTimer?.cancel();
+    audioPlayer.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkPermissions() async {
+    if (await Permission.location.isDenied) {
+      await Permission.location.request();
+    }
+    if (await Permission.notification.isDenied) {
+      await Permission.notification.request();
+    }
+    _determinePosition();
+    _startLocationUpdates();
+  }
+
+  void _initNotification() async {
+    const AndroidInitializationSettings androidSettings =
+    AndroidInitializationSettings('@mipmap/ic_launcher');
+    const InitializationSettings settings =
+    InitializationSettings(android: androidSettings);
+    await flutterLocalNotificationsPlugin.initialize(settings);
+  }
+
+  void _showNotification({bool isEarlyWarning = false}) async {
+    String title = isEarlyWarning
+        ? 'Approaching Destination'
+        : 'Destination Reached';
+
+    String body = isEarlyWarning
+        ? 'You will reach your destination in about 30 minutes!'
+        : 'You are close to your destination!';
+
+    // Remove the sound reference that's causing the error
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'alarm_channel',
+      'Alarm Notifications',
+      importance: Importance.high,
+      priority: Priority.high,
+      // Removed sound reference that was causing errors
+    );
+
+    const NotificationDetails details =
+    NotificationDetails(android: androidDetails);
+
+    await flutterLocalNotificationsPlugin.show(
+      isEarlyWarning ? 1 : 0,
+      title,
+      body,
+      details,
+    );
+
+    // Try to play a system sound instead
+    HapticFeedback.vibrate();
+    _playAlarmSound();
+  }
+
+  Future<void> _determinePosition() async {
+    Position position =
+    await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+    setState(() {
+      userLocation = LatLng(position.latitude, position.longitude);
+      _mapController.move(userLocation!, 18.0);
+    });
+  }
+
+  Future<List<String>> _getLocationSuggestions(String query) async {
+    if (query.isEmpty) return [];
+    try {
+      final response = await Dio().get(
+        "https://api.geoapify.com/v1/geocode/autocomplete",
+        queryParameters: {"text": query, "apiKey": apiKey, "limit": 10},
+      );
+      List<dynamic> features = response.data["features"];
+      return features.map<String>((place) {
+        String name = place["properties"]["formatted"];
+        double lat = place["properties"]["lat"];
+        double lon = place["properties"]["lon"];
+        return "$name|$lat,$lon";
+      }).toList();
+    } catch (e) {
+      print("Error fetching suggestions: $e");
+      return [];
+    }
+  }
+
+  void _moveToLocation(String selectedPlace) {
+    List<String> parts = selectedPlace.split("|");
+    List<String> coordinates = parts[1].split(",");
+    double lat = double.parse(coordinates[0]);
+    double lng = double.parse(coordinates[1]);
+
+    setState(() {
+      destinationLocation = LatLng(lat, lng);
+      _mapController.move(destinationLocation!, 18.0);
+
+      // Calculate estimated distance and time
+      if (userLocation != null) {
+        estimatedDistance = _calculateDistance(userLocation!, destinationLocation!);
+        // Rough estimate: 50 km/h average speed
+        estimatedTime = (estimatedDistance! / 50) * 60; // Convert to minutes
+      }
+
+      // Reset alarm trigger status
+      earlyWarningTriggered = false;
+    });
+  }
+
+  void _startLocationUpdates() {
+    locationTimer = Timer.periodic(Duration(seconds: 60), (timer) async {
+      Position position =
+      await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+
+      setState(() {
+        userLocation = LatLng(position.latitude, position.longitude);
+
+        // Update distance and time estimates if destination is set
+        if (destinationLocation != null) {
+          estimatedDistance = _calculateDistance(userLocation!, destinationLocation!);
+          // Rough estimate: 50 km/h average speed
+          estimatedTime = (estimatedDistance! / 50) * 60; // Convert to minutes
+        }
+      });
+
+      if (alarmSet && destinationLocation != null) {
+        _checkAlarmCondition();
+      }
+    });
+  }
+
+  double _calculateDistance(LatLng start, LatLng end) {
+    const double earthRadius = 6371;
+    double lat1 = start.latitude * pi / 180;
+    double lon1 = start.longitude * pi / 180;
+    double lat2 = end.latitude * pi / 180;
+    double lon2 = end.longitude * pi / 180;
+    double dLat = lat2 - lat1;
+    double dLon = lon2 - lon1;
+    double a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(lat1) * cos(lat2) * sin(dLon / 2) * sin(dLon / 2);
+    double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  void _checkAlarmCondition() {
+    if (userLocation == null || destinationLocation == null) return;
+
+    double distance = _calculateDistance(userLocation!, destinationLocation!);
+
+    // Calculate time to destination (assuming 50 km/h average speed)
+    double timeToDestInMinutes = (distance / 50) * 60; // Convert to minutes
+
+    // Early warning at approximately 30 minutes before arrival
+    if (timeToDestInMinutes <= 30 && timeToDestInMinutes > 5 && !earlyWarningTriggered) {
+      _showNotification(isEarlyWarning: true);
+      setState(() {
+        earlyWarningTriggered = true;
+      });
+    }
+
+    // Final arrival notification (within 500 meters)
+    double thresholdDistance = 0.5; // 500 meters
+    if (distance <= thresholdDistance) {
+      _showNotification();
+    }
+  }
+
+  void _setDestination() {
+    if (destinationLocation != null) {
+      setState(() {
+        alarmSet = true;
+        earlyWarningTriggered = false;
+        alarmTriggered = false;
+      });
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(
+        content: Text("Destination set successfully! You'll be notified 30 minutes before arrival."),
+        duration: Duration(seconds: 4),
+      ));
+    }
+  }
+
+  void _onMapTap(LatLng tappedPoint) {
+    setState(() {
+      destinationLocation = tappedPoint;
+      alarmSet = true;
+
+      // Calculate estimated distance and time
+      if (userLocation != null) {
+        estimatedDistance = _calculateDistance(userLocation!, destinationLocation!);
+        // Rough estimate: 50 km/h average speed
+        estimatedTime = (estimatedDistance! / 50) * 60; // Convert to minutes
+      }
+
+      // Reset early warning trigger
+      earlyWarningTriggered = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        // Removed the leading icon (menu button)
+        actions: [
+          IconButton(
+            icon: Icon(Icons.info_outline, color: Colors.white),
+            onPressed: () {
+              _showAppInfoModal();
+            },
+          ),
+        ],
+        backgroundColor: Colors.transparent,
+      ),
+      body: Stack(
+        children: [
+          // Background Gradient
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF1A237E),  // Deep Indigo
+                  Color(0xFF283593),  // Slightly lighter Indigo
+                ],
+              ),
+            ),
+          ),
+
+          // Main Content
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Search Container with Glassmorphism
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  child: GlassmorphicContainer(
+                    width: double.infinity,
+                    height: 60,
+                    borderRadius: 15,
+                    blur: 10,
+                    alignment: Alignment.bottomCenter,
+                    border: 2,
+                    linearGradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withOpacity(0.1),
+                        Colors.white.withOpacity(0.05),
+                      ],
+                    ),
+                    borderGradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withOpacity(0.5),
+                        Colors.white.withOpacity(0.1),
+                      ],
+                    ),
+                    child: TypeAheadField<String>(
+                      debounceDuration: Duration(milliseconds: 300),
+                      suggestionsCallback: _getLocationSuggestions,
+                      itemBuilder: (context, suggestion) {
+                        List<String> parts = suggestion.split("|");
+                        return ListTile(
+                          leading: Icon(Icons.location_on),
+                          title: Text(parts[0]),
+                        );
+                      },
+                      onSelected: (suggestion) {
+                        _moveToLocation(suggestion);
+                      },
+                      builder: (context, controller, focusNode) {
+                        return TextField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          style: GoogleFonts.poppins(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Search Destination',
+                            hintStyle: GoogleFonts.poppins(color: Colors.white54),
+                            prefixIcon: Icon(Icons.search, color: Colors.white),
+                            border: InputBorder.none,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+
+                // Distance and ETA Card
+                if (estimatedDistance != null && estimatedTime != null)
+                  FadeInUp(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                      child: GlassmorphicContainer(
+                        width: double.infinity,
+                        height: 100,
+                        borderRadius: 15,
+                        blur: 10,
+                        alignment: Alignment.center,
+                        border: 2,
+                        linearGradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Colors.white.withOpacity(0.1),
+                            Colors.white.withOpacity(0.05),
+                          ],
+                        ),
+                        borderGradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Colors.white.withOpacity(0.5),
+                            Colors.white.withOpacity(0.1),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _buildStatCard(
+                              value: "${estimatedDistance!.toStringAsFixed(2)} km",
+                              label: "Distance",
+                            ),
+                            _buildStatCard(
+                              value: "${estimatedTime!.toStringAsFixed(1)} min",
+                              label: "ETA",
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Map
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: FlutterMap(
+                        mapController: _mapController,
+                        options: MapOptions(
+                          onTap: (_, point) => _onMapTap(point),
+                          initialCenter: userLocation ?? LatLng(20.5937, 78.9629), // Centered on India
+                          initialZoom: 4.0,
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                            userAgentPackageName: 'com.example.locationtracker',
+                          ),
+                          if (userLocation != null)
+                            MarkerLayer(markers: [
+                              Marker(
+                                point: userLocation!,
+                                width: 40,
+                                height: 40,
+                                child: Icon(Icons.person_pin_circle, color: Colors.blue, size: 40),
+                              ),
+                            ]),
+                          if (destinationLocation != null)
+                            MarkerLayer(markers: [
+                              Marker(
+                                point: destinationLocation!,
+                                width: 40,
+                                height: 40,
+                                child: Icon(Icons.location_pin, color: Colors.red, size: 40),
+                              ),
+                            ]),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Action Buttons Container
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      // Set Destination Button
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: destinationLocation != null && !alarmTriggered ? _setDestination : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepOrange,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(vertical: 15),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            elevation: 5,
+                            disabledBackgroundColor: Colors.grey,
+                          ),
+                          child: Text(
+                            'Set Destination Alarm',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      SizedBox(width: 10),
+
+                      // Stop Alarm Button
+                      Expanded(
+                        flex: 1,
+                        child: ElevatedButton(
+                          onPressed: alarmTriggered || earlyWarningTriggered ? _stopAlarm : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(vertical: 15),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            elevation: 5,
+                            disabledBackgroundColor: Colors.grey.withOpacity(0.5),
+                          ),
+                          child: Text(
+                            'Stop Alarm',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard({required String value, required String label}) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          value,
+          style: GoogleFonts.poppins(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: GoogleFonts.poppins(
+            color: Colors.white54,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showAppInfoModal() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => GlassmorphicContainer(
+        width: double.infinity,
+        height: 300,
+        borderRadius: 20,
+        blur: 10,
+        alignment: Alignment.bottomCenter,
+        border: 2,
+        linearGradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withOpacity(0.1),
+            Colors.white.withOpacity(0.05),
+          ],
+        ),
+        borderGradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withOpacity(0.5),
+            Colors.white.withOpacity(0.1),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              Text(
+                'Location Tracker',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'An advanced location tracking app that helps you navigate and set destination alarms.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  color: Colors.white70,
+                ),
+              ),
+              SizedBox(height: 20),
+              Text(
+                'Created by: PrakharDoneria',
+                style: GoogleFonts.poppins(
+                  color: Colors.white70,
+                  fontSize: 12,
+                ),
+              ),
+              Text(
+                'Last Updated: 2025-03-28 19:36:17',
+                style: GoogleFonts.poppins(
+                  color: Colors.white70,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
