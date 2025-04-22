@@ -28,7 +28,7 @@ const Home: React.FC = () => {
   return (
     <div className="h-screen w-screen overflow-hidden relative bg-neutral-900">
       {/* Map component (background) */}
-      <Map />
+      <Map ref={mapControlsRef} />
       
       {/* Header with search bar */}
       <div className="absolute top-0 left-0 right-0 z-20">

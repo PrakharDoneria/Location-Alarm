@@ -90,15 +90,21 @@ export const MapControlsRef = forwardRef<{ zoomIn: () => void; zoomOut: () => vo
   return null;
 });
 
-const Map: React.FC = () => {
+export interface MapProps {
+  ref?: React.Ref<{ zoomIn: () => void; zoomOut: () => void; centerOnUser: () => void; }>;
+}
+
+const Map = forwardRef<{ zoomIn: () => void; zoomOut: () => void; centerOnUser: () => void; }, MapProps>((props, ref) => {
   const { userLocation, destinationLocation, destinationInfo } = useLocation();
   const mapControlsRef = useRef<{ zoomIn: () => void; zoomOut: () => void; centerOnUser: () => void; } | null>(null);
   const [map, setMap] = useState<L.Map | null>(null);
-
-  // Expose map controls to parent components
-  useEffect(() => {
-    (window as any).mapControls = mapControlsRef.current;
-  }, [mapControlsRef]);
+  
+  // Forward methods to parent component
+  useImperativeHandle(ref, () => ({
+    zoomIn: () => mapControlsRef.current?.zoomIn(),
+    zoomOut: () => mapControlsRef.current?.zoomOut(),
+    centerOnUser: () => mapControlsRef.current?.centerOnUser()
+  }));
 
   return (
     <div className="map-container h-screen w-full absolute inset-0 z-0">
@@ -135,6 +141,6 @@ const Map: React.FC = () => {
       </MapContainer>
     </div>
   );
-};
+});
 
 export default Map;
