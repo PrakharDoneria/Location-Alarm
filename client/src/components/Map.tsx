@@ -56,10 +56,10 @@ const LocationUpdater: React.FC = () => {
         },
         (error) => {
           console.error('Error getting initial location:', error);
-          // Default to a fallback location (New York City) if geolocation fails
-          const fallbackLocation = new LatLng(40.7128, -74.0060);
-          setUserLocation(fallbackLocation);
-          map.setView(fallbackLocation, 13);
+          // Don't set a user location if geolocation fails
+          // Just keep the default map view
+          map.setView(map.getCenter(), 13);
+          // Show an error toast or notification to the user
         }
       );
 

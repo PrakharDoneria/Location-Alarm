@@ -5,8 +5,7 @@ import { LocationResult } from '@/contexts/LocationContext';
 // Default API endpoint
 const GEOAPIFY_API_URL = 'https://api.geoapify.com/v1/geocode/search';
 
-// This would typically be stored securely in env variables
-// This is just a placeholder for demo purposes
+// Access the API key from environment variables
 const GEOAPIFY_API_KEY = import.meta.env.VITE_GEOAPIFY_API_KEY || '';
 
 interface GeoapifySearchHook {
@@ -57,7 +56,7 @@ export function useGeoapifySearch(): GeoapifySearchHook {
       
       return results;
     } catch (err) {
-      // Use mock data if API key is missing or if there's an error
+      // Handle API errors gracefully
       console.error('Error fetching location data:', err);
       setError('Error searching for locations. Please try again later.');
       
