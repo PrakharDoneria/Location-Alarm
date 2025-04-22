@@ -1,16 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Map from '@/components/Map';
 import SearchBar from '@/components/SearchBar';
 import BottomSheet from '@/components/BottomSheet';
 import LocationControls from '@/components/LocationControls';
 import AlarmModal from '@/components/AlarmModal';
+import AlarmActiveOverlay from '@/components/AlarmActiveOverlay';
 import InfoModal from '@/components/InfoModal';
 import { useLocation } from '@/contexts/LocationContext';
-import { requestPermissions } from '@/lib/locationUtils';
+import { requestPermissions, formatTime } from '@/lib/locationUtils';
 
 const Home: React.FC = () => {
   const [infoModalOpen, setInfoModalOpen] = useState<boolean>(false);
-  const { alarmTriggered } = useLocation();
+  const mapControlsRef = useRef<{ zoomIn: () => void; zoomOut: () => void; centerOnUser: () => void; } | null>(null);
+  
+  const { 
+    alarmTriggered, 
+    earlyWarningTriggered, 
+    stopAlarm,
+    estimatedTime
+  } = useLocation();
 
   // Request permissions on component mount
   useEffect(() => {
@@ -45,14 +53,25 @@ const Home: React.FC = () => {
       </div>
       
       {/* Map Controls */}
-      <LocationControls />
+      <LocationControls 
+        onZoomIn={() => mapControlsRef.current?.zoomIn()}
+        onZoomOut={() => mapControlsRef.current?.zoomOut()}
+        onLocateUser={() => mapControlsRef.current?.centerOnUser()}
+      />
       
       {/* Bottom sheet with destination details */}
       <BottomSheet />
       
+      {/* Early warning notification */}
+      <AlarmActiveOverlay 
+        isVisible={earlyWarningTriggered && !alarmTriggered}
+        remainingTime={estimatedTime ? formatTime(estimatedTime) : "a few minutes"}
+        onStopAlarm={stopAlarm}
+      />
+      
       {/* Modals */}
       <InfoModal isOpen={infoModalOpen} onClose={() => setInfoModalOpen(false)} />
-      <AlarmModal isOpen={alarmTriggered} />
+      <AlarmModal isOpen={alarmTriggered} onClose={stopAlarm} />
     </div>
   );
 };

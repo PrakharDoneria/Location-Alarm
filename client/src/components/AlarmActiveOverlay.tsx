@@ -1,5 +1,6 @@
-import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface AlarmActiveOverlayProps {
   isVisible: boolean;
@@ -12,59 +13,62 @@ const AlarmActiveOverlay = ({
   remainingTime, 
   onStopAlarm 
 }: AlarmActiveOverlayProps) => {
-  // Play alert sound when alarm becomes visible
-  const playAlertSound = () => {
-    try {
-      const audio = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-alarm-digital-clock-beep-989.mp3');
-      audio.play().catch(err => console.error('Error playing sound:', err));
-      
-      // Vibration API if available
-      if ('vibrate' in navigator) {
-        navigator.vibrate([300, 100, 300]);
-      }
-    } catch (error) {
-      console.error('Error playing alert sound:', error);
-    }
-  };
-  
-  // React to visibility changes
-  if (isVisible) {
-    playAlertSound();
-  }
-  
   return (
     <AnimatePresence>
       {isVisible && (
-        <motion.div 
-          className="fixed inset-0 bg-indigo-900/90 z-50 flex items-center justify-center"
+        <motion.div
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm flex items-end justify-center p-4 pb-10"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.3 }}
         >
-          <div className="text-center p-6 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl max-w-md w-full mx-4 shadow-lg">
-            <motion.div 
-              className="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-6"
-              animate={{ scale: [1, 1.1, 1] }}
-              transition={{ repeat: Infinity, duration: 1.5 }}
-            >
-              <i className="ri-alarm-warning-line text-white text-4xl"></i>
-            </motion.div>
-            
-            <h2 className="text-white text-2xl font-semibold mb-2">Approaching Destination!</h2>
-            <p className="text-white/90 mb-6">
-              You're getting close to your destination. Estimated arrival in <span>{remainingTime || '5 minutes'}</span>.
-            </p>
-            
-            <div className="flex justify-center">
-              <Button 
-                className="bg-white text-indigo-900 hover:bg-gray-100 px-6 py-6 text-lg font-medium"
+          <motion.div
+            className="bg-gradient-to-r from-blue-700 to-indigo-800 rounded-lg p-4 max-w-md w-full"
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+          >
+            <div className="flex justify-between items-center mb-2">
+              <div className="flex items-center">
+                <div className="mr-3 relative">
+                  <motion.div
+                    className="absolute inset-0 rounded-full bg-red-500 opacity-50"
+                    animate={{ scale: [1, 1.5, 1] }}
+                    transition={{ repeat: Infinity, duration: 1.5 }}
+                  />
+                  <div className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center relative z-10">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="white"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                    </svg>
+                  </div>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white text-lg">Approaching Destination</h3>
+                  <p className="text-blue-200 text-sm">Estimated arrival in {remainingTime}</p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-blue-100 border-blue-300/50 hover:bg-blue-600"
                 onClick={onStopAlarm}
               >
-                <i className="ri-stop-circle-line mr-2"></i> Stop Alarm
+                Dismiss
               </Button>
             </div>
-          </div>
+          </motion.div>
         </motion.div>
       )}
     </AnimatePresence>

@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 interface AlarmModalProps {
   isOpen: boolean;
-  onClose?: () => void;
+  onClose: () => void;
 }
 
 const AlarmModal = ({ isOpen, onClose }: AlarmModalProps) => {

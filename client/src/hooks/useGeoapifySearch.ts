@@ -58,42 +58,14 @@ export function useGeoapifySearch(): GeoapifySearchHook {
       return results;
     } catch (err) {
       // Use mock data if API key is missing or if there's an error
-      // This is just for demo purposes to show functionality
       console.error('Error fetching location data:', err);
-      setError('Error searching for locations. Using demo data.');
+      setError('Error searching for locations. Please try again later.');
       
-      // Demo data for development without API key
-      const mockResults = [
-        {
-          name: 'Central Park',
-          address: 'Central Park, New York, NY, USA',
-          lat: 40.7812,
-          lon: -73.9665,
-          formatted: 'Central Park, New York, NY, USA'
-        },
-        {
-          name: 'Empire State Building',
-          address: '350 5th Ave, New York, NY 10118, USA',
-          lat: 40.7484,
-          lon: -73.9857,
-          formatted: '350 5th Ave, New York, NY 10118, USA'
-        },
-        {
-          name: 'Times Square',
-          address: 'Times Square, New York, NY 10036, USA',
-          lat: 40.7580,
-          lon: -73.9855,
-          formatted: 'Times Square, New York, NY 10036, USA'
-        }
-      ].filter(location => 
-        location.name.toLowerCase().includes(query.toLowerCase()) || 
-        location.address.toLowerCase().includes(query.toLowerCase())
-      );
-      
-      setSearchResults(mockResults);
+      // Return an empty array in case of error
+      setSearchResults([]);
       setLoading(false);
       
-      return mockResults;
+      return [];
     }
   }, []);
 
