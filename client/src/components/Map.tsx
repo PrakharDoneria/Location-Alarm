@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } f
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L, { LatLng } from 'leaflet';
 import { useLocation } from '@/contexts/LocationContext';
+import { useToast } from '@/hooks/use-toast';
 
 // Fix Leaflet icon issues
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -72,6 +73,137 @@ const LocationUpdater: React.FC = () => {
   return null;
 };
 
+// MapClickHandler component to handle map clicks
+const MapClickHandler: React.FC = () => {
+  const map = useMap();
+  const { setDestination } = useLocation();
+  const { toast } = useToast();
+  const [clickLocation, setClickLocation] = useState<L.LatLng | null>(null);
+  
+  // Create a ripple effect at click location
+  useEffect(() => {
+    if (clickLocation) {
+      // Add a temporary circle to show where the user clicked
+      const circle = L.circle(clickLocation, {
+        radius: 5,
+        color: '#fff',
+        fillColor: '#3498db',
+        fillOpacity: 1,
+        weight: 2,
+        opacity: 0.7
+      }).addTo(map);
+      
+      // Animate the circle expanding and fading out
+      let radius = 5;
+      let opacity = 0.7;
+      
+      const animationInterval = setInterval(() => {
+        radius += 5;
+        opacity -= 0.03;
+        
+        if (opacity <= 0) {
+          clearInterval(animationInterval);
+          map.removeLayer(circle);
+          return;
+        }
+        
+        circle.setRadius(radius);
+        circle.setStyle({ opacity, fillOpacity: opacity });
+      }, 20);
+      
+      // Clean up
+      return () => {
+        clearInterval(animationInterval);
+        if (map.hasLayer(circle)) {
+          map.removeLayer(circle);
+        }
+      };
+    }
+  }, [clickLocation, map]);
+  
+  useEffect(() => {
+    const handleMapClick = (e: L.LeafletMouseEvent) => {
+      const { lat, lng } = e.latlng;
+      
+      // Set the click location for the ripple effect
+      setClickLocation(new L.LatLng(lat, lng));
+      
+      // Show loading toast
+      toast({
+        title: "Setting destination...",
+        description: "Finding location details",
+        duration: 3000
+      });
+      
+      // Reverse geocode to get location info
+      fetch(`https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lng}&apiKey=${import.meta.env.VITE_GEOAPIFY_API_KEY}`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.features && data.features.length > 0) {
+            const location = data.features[0].properties;
+            const locationName = location.name || location.formatted.split(',')[0] || 'Selected Location';
+            setDestination(
+              new LatLng(lat, lng),
+              { 
+                name: locationName,
+                address: location.formatted || `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`
+              }
+            );
+            
+            // Show success toast
+            toast({
+              title: "Destination set",
+              description: `Location: ${locationName}`,
+              duration: 3000
+            });
+          } else {
+            // If reverse geocoding fails, use coordinates as name
+            setDestination(
+              new LatLng(lat, lng),
+              { 
+                name: 'Selected Location',
+                address: `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`
+              }
+            );
+            
+            // Show success toast
+            toast({
+              title: "Destination set",
+              description: "Location set to selected point",
+              duration: 3000
+            });
+          }
+        })
+        .catch(error => {
+          console.error('Error reverse geocoding:', error);
+          // If API call fails, still set the destination with basic info
+          setDestination(
+            new LatLng(lat, lng),
+            { 
+              name: 'Selected Location',
+              address: `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`
+            }
+          );
+          
+          // Show feedback
+          toast({
+            title: "Destination set",
+            description: "Couldn't get location info, using coordinates only",
+            duration: 3000
+          });
+        });
+    };
+    
+    map.on('click', handleMapClick);
+    
+    return () => {
+      map.off('click', handleMapClick);
+    };
+  }, [map, setDestination, toast]);
+  
+  return null;
+};
+
 // MapControlsRef component to expose map methods
 export const MapControlsRef = forwardRef<{ zoomIn: () => void; zoomOut: () => void; centerOnUser: () => void; }, {}>((_, ref) => {
   const map = useMap();
@@ -123,6 +255,7 @@ const Map = forwardRef<{ zoomIn: () => void; zoomOut: () => void; centerOnUser: 
         
         <LocationUpdater />
         <MapControlsRef ref={mapControlsRef} />
+        <MapClickHandler />
         
         {userLocation && (
           <Marker position={userLocation} icon={userIcon} />
