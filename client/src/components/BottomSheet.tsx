@@ -7,9 +7,7 @@ interface BottomSheetProps {
   className?: string;
 }
 
-const BottomSheet = ({ 
-  className 
-}: BottomSheetProps) => {
+const BottomSheet = ({ className }: BottomSheetProps) => {
   const { 
     destinationInfo, 
     destinationLocation,
@@ -18,6 +16,7 @@ const BottomSheet = ({
     alarmSet,
     setAlarm
   } = useLocation();
+
   const [isExpanded, setIsExpanded] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const bottomSheetRef = useRef<HTMLDivElement>(null);
@@ -86,8 +85,8 @@ const BottomSheet = ({
               <circle cx="12" cy="10" r="3" />
             </svg>
             <div>
-              <div className="font-medium">{destination?.name}</div>
-              <div className="text-xs text-neutral-300">{destination?.address}</div>
+              <div className="font-medium">{destinationInfo?.name}</div>
+              <div className="text-xs text-neutral-300">{destinationInfo?.address}</div>
             </div>
           </div>
           <button 
@@ -95,13 +94,13 @@ const BottomSheet = ({
             className={cn(
               "px-4 py-2 rounded-lg font-medium text-sm",
               {
-                "bg-yellow-500 text-neutral-800": !isAlarmSet,
-                "bg-red-500 text-white": isAlarmSet
+                "bg-yellow-500 text-neutral-800": !alarmSet,
+                "bg-red-500 text-white": alarmSet
               }
             )}
-            onClick={onSetAlarm}
+            onClick={handleToggleAlarm}
           >
-            {isAlarmSet ? 'Cancel Alarm' : 'Set Alarm'}
+            {alarmSet ? 'Cancel Alarm' : 'Set Alarm'}
           </button>
         </div>
       )}
@@ -110,8 +109,8 @@ const BottomSheet = ({
       {isExpanded && (
         <div className="px-4 pb-12 overflow-y-auto h-full">
           <div className="mb-6">
-            <h2 className="text-xl font-bold mb-1">{destination?.name}</h2>
-            <p className="text-sm text-neutral-300">{destination?.address}</p>
+            <h2 className="text-xl font-bold mb-1">{destinationInfo?.name}</h2>
+            <p className="text-sm text-neutral-300">{destinationInfo?.address}</p>
           </div>
           
           <div className="grid grid-cols-2 gap-4 mb-6">
@@ -119,10 +118,10 @@ const BottomSheet = ({
               <div className="text-xs text-neutral-400 mb-1">Distance</div>
               <div className="flex items-end">
                 <span className="text-xl font-bold">
-                  {distanceInfo ? formatDistance(distanceInfo.distance).split(' ')[0] : '-'}
+                  {estimatedDistance ? formatDistance(estimatedDistance).split(' ')[0] : '-'}
                 </span>
                 <span className="text-sm ml-1 text-neutral-300">
-                  {distanceInfo ? formatDistance(distanceInfo.distance).split(' ')[1] : 'km'}
+                  {estimatedDistance ? formatDistance(estimatedDistance).split(' ')[1] : 'km'}
                 </span>
               </div>
             </div>
@@ -130,7 +129,7 @@ const BottomSheet = ({
               <div className="text-xs text-neutral-400 mb-1">Est. Time</div>
               <div className="flex items-end">
                 <span className="text-xl font-bold">
-                  {distanceInfo ? Math.round(distanceInfo.estimatedTime) : '-'}
+                  {estimatedTime ? Math.round(estimatedTime) : '-'}
                 </span>
                 <span className="text-sm ml-1 text-neutral-300">min</span>
               </div>
@@ -145,15 +144,15 @@ const BottomSheet = ({
                   type="checkbox" 
                   className={cn(
                     "appearance-none w-12 h-6 rounded-full outline-none transition focus:outline-none cursor-pointer",
-                    isAlarmSet ? "bg-yellow-500" : "bg-neutral-700"
+                    alarmSet ? "bg-yellow-500" : "bg-neutral-700"
                   )}
-                  checked={isAlarmSet}
-                  onChange={onSetAlarm}
+                  checked={alarmSet}
+                  onChange={handleToggleAlarm}
                 />
                 <span 
                   className={cn(
                     "absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition transform",
-                    isAlarmSet ? "translate-x-6" : ""
+                    alarmSet ? "translate-x-6" : ""
                   )}
                 ></span>
               </div>
@@ -215,13 +214,13 @@ const BottomSheet = ({
             className={cn(
               "w-full p-3 rounded-lg font-medium",
               {
-                "bg-yellow-500 text-neutral-800": !isAlarmSet,
-                "bg-red-500 text-white": isAlarmSet
+                "bg-yellow-500 text-neutral-800": !alarmSet,
+                "bg-red-500 text-white": alarmSet
               }
             )}
-            onClick={onSetAlarm}
+            onClick={handleToggleAlarm}
           >
-            {isAlarmSet ? 'Cancel Alarm' : 'Set Alarm'}
+            {alarmSet ? 'Cancel Alarm' : 'Set Alarm'}
           </button>
         </div>
       )}

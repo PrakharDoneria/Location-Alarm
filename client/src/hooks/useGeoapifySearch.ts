@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import axios from 'axios';
-import { LocationSearchResult } from '@/types/location';
+import { LocationResult } from '@/contexts/LocationContext';
 
 // Default API endpoint
 const GEOAPIFY_API_URL = 'https://api.geoapify.com/v1/geocode/search';
@@ -12,17 +12,17 @@ const GEOAPIFY_API_KEY = import.meta.env.VITE_GEOAPIFY_API_KEY || '';
 interface GeoapifySearchHook {
   loading: boolean;
   error: string | null;
-  searchResults: LocationSearchResult[];
-  searchLocations: (query: string) => Promise<LocationSearchResult[]>;
+  searchResults: LocationResult[];
+  searchLocations: (query: string) => Promise<LocationResult[]>;
   clearResults: () => void;
 }
 
 export function useGeoapifySearch(): GeoapifySearchHook {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchResults, setSearchResults] = useState<LocationSearchResult[]>([]);
+  const [searchResults, setSearchResults] = useState<LocationResult[]>([]);
 
-  const searchLocations = useCallback(async (query: string): Promise<LocationSearchResult[]> => {
+  const searchLocations = useCallback(async (query: string): Promise<LocationResult[]> => {
     setLoading(true);
     setError(null);
     
@@ -47,9 +47,9 @@ export function useGeoapifySearch(): GeoapifySearchHook {
       const results = response.data.results.map((result: any) => ({
         name: result.name || result.formatted.split(',')[0],
         address: result.formatted,
-        latitude: result.lat,
-        longitude: result.lon,
-        properties: result.properties
+        lat: result.lat,
+        lon: result.lon,
+        formatted: result.formatted
       }));
       
       setSearchResults(results);
@@ -63,24 +63,27 @@ export function useGeoapifySearch(): GeoapifySearchHook {
       setError('Error searching for locations. Using demo data.');
       
       // Demo data for development without API key
-      const mockResults: LocationSearchResult[] = [
+      const mockResults = [
         {
           name: 'Central Park',
           address: 'Central Park, New York, NY, USA',
-          latitude: 40.7812,
-          longitude: -73.9665,
+          lat: 40.7812,
+          lon: -73.9665,
+          formatted: 'Central Park, New York, NY, USA'
         },
         {
           name: 'Empire State Building',
           address: '350 5th Ave, New York, NY 10118, USA',
-          latitude: 40.7484,
-          longitude: -73.9857,
+          lat: 40.7484,
+          lon: -73.9857,
+          formatted: '350 5th Ave, New York, NY 10118, USA'
         },
         {
           name: 'Times Square',
           address: 'Times Square, New York, NY 10036, USA',
-          latitude: 40.7580,
-          longitude: -73.9855,
+          lat: 40.7580,
+          lon: -73.9855,
+          formatted: 'Times Square, New York, NY 10036, USA'
         }
       ].filter(location => 
         location.name.toLowerCase().includes(query.toLowerCase()) || 
